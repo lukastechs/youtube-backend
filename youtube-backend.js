@@ -9,9 +9,9 @@ const app = express();
 const port = process.env.PORT || 8080;
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 
-// In-memory cache (alternative: use a file-based cache)
+// In-memory cache
 const cache = new Map();
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 // Enable CORS for socialagechecker.com
 app.use(express.json());
@@ -51,59 +51,64 @@ function calculateChannelAge(creationDate) {
 
 // Extract channel ID from URL, handle, or ID
 async function extractChannelId(input) {
-    // Direct channel ID (e.g., UCX6OQ3DkcsbYNE6H8uQQuVA)
+    if (!input) return null;
+    input = input.trim();
+
+    // Direct channel ID
     if (/^UC[0-9a-zA-Z_-]{22}$/.test(input)) {
         return input;
     }
-    // Channel URL (e.g., https://www.youtube.com/channel/UCX6OQ3DkcsbYNE6H8uQQuVA)
+    // Channel URL (e.g., https://www.youtube.com/channel/UC...)
     const channelMatch = input.match(/youtube\.com\/channel\/(UC[0-9a-zA-Z_-]{22})/i);
     if (channelMatch) {
         return channelMatch[1];
     }
-    // Custom URL or handle (e.g., https://www.youtube.com/c/MrBeast or @MrBeast)
-    const customMatch = input.match(/youtube\.com\/(?:c\/|@)([^\s\/]+)/i);
-    if (customMatch) {
-        const customName = customMatch[1];
-        const response = await fetch(
-            `https://www.googleapis.com/youtube/v3/channels?part=id&forUsername=${customName}&key=${YOUTUBE_API_KEY}`
-        );
-        const data = await response.json();
-        if (data.items && data.items.length > 0) {
-            return data.items[0].id;
+    // Handle or custom URL (e.g., @MrBeast, https://www.youtube.com/@MrBeast)
+    const handleMatch = input.match(/(?:youtube\.com\/)?@?([^\s\/]+)/i);
+    if (handleMatch) {
+        const handle = handleMatch[1].replace(/^@/, '');
+        try {
+            const response = await fetch(
+                `https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=${encodeURIComponent(handle)}&key=${YOUTUBE_API_KEY}`,
+                { headers: { 'User-Agent': 'SocialAgeChecker/1.0' } }
+            );
+            const data = await response.json();
+            if (data.items && data.items.length > 0) {
+                return data.items[0].id;
+            }
+        } catch (error) {
+            console.error(`Error resolving handle ${handle}:`, error.message);
         }
     }
     return null;
 }
 
-// Root endpoint for Render health checks
+// Root endpoint for health checks
 app.get('/', (req, res) => {
     res.status(200).json({
         status: 'OK',
         message: 'YouTube Age Checker Backend is running',
         endpoints: [
-            '/api/youtube-age/:channelInput',
+            '/api/youtube-age',
             '/health'
         ]
     });
 });
 
-// Channel age endpoint
-app.get('/api/youtube-age/:channelInput', async (req, res) => {
-    const { channelInput } = req.params;
-
+// Channel age endpoint (POST for frontend compatibility)
+app.post('/api/youtube-age', async (req, res) => {
+    const channelInput = req.body.channel;
     if (!channelInput) {
         console.error(`Invalid channel input: ${channelInput}`);
         return res.status(400).json({ error: 'Channel URL or ID is required' });
     }
 
-    // Resolve channel ID
     const channelId = await extractChannelId(channelInput);
     if (!channelId) {
         console.error(`Invalid channel input: ${channelInput}`);
         return res.status(400).json({ error: 'Invalid channel URL or ID' });
     }
 
-    // Check cache
     const cacheKey = channelId;
     const cached = cache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
@@ -113,7 +118,8 @@ app.get('/api/youtube-age/:channelInput', async (req, res) => {
 
     try {
         const response = await fetch(
-            `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelId}&key=${YOUTUBE_API_KEY}`
+            `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelId}&key=${YOUTUBE_API_KEY}`,
+            { headers: { 'User-Agent': 'SocialAgeChecker/1.0' } }
         );
         if (!response.ok) {
             console.error(`API error for channel ID ${channelId}: HTTP ${response.status}`);
@@ -145,7 +151,6 @@ app.get('/api/youtube-age/:channelInput', async (req, res) => {
             subscribers: subscriberCount
         };
 
-        // Cache the response
         cache.set(cacheKey, { data: responseData, timestamp: Date.now() });
         console.log(`Successfully fetched data for channel ID: ${channelId}`);
         res.json({ ...responseData, is_cached: false });
