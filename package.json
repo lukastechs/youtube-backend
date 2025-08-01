@@ -4,7 +4,7 @@
   "description": "YouTube Channel Age Checker Backend",
   "main": "youtube-backend.js",
   "scripts": {
-    "start": "node youtube-index.js"
+    "start": "node youtube-backend.js"
   },
   "dependencies": {
     "express": "^4.17.1",
