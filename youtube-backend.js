@@ -1,3 +1,4 @@
+// index.js
 const express = require('express');
 const dotenv = require('dotenv');
 const fetch = require('node-fetch');
@@ -84,22 +85,8 @@ async function extractChannelId(input) {
     return null;
 }
 
-// Root endpoint for Render health checks
-app.get('/', (req, res) => {
-    res.status(200).json({
-        status: 'OK',
-        message: 'YouTube Age Checker Backend is running',
-        endpoints: [
-            '/api/youtube-age/:channelInput (GET)',
-            '/health'
-        ]
-    });
-});
-
-// GET endpoint for channel age
-app.get('/api/youtube-age/:channelInput', async (req, res) => {
-    const { channelInput } = req.params;
-
+// Handle channel request (shared logic for GET and POST)
+async function handleChannelRequest(channelInput, res) {
     if (!channelInput) {
         console.error(`Invalid channel input: ${channelInput}`);
         return res.status(400).json({ error: 'Channel URL, handle, or ID is required' });
@@ -161,6 +148,31 @@ app.get('/api/youtube-age/:channelInput', async (req, res) => {
         console.error(`Error fetching channel for ID ${channelId}:`, error.message);
         res.status(500).json({ error: 'Could not fetch channel data' });
     }
+}
+
+// Root endpoint for Render health checks
+app.get('/', (req, res) => {
+    res.status(200).json({
+        status: 'OK',
+        message: 'YouTube Age Checker Backend is running',
+        endpoints: [
+            '/api/youtube-age/:channelInput (GET)',
+            '/api/youtube-age (POST)',
+            '/health'
+        ]
+    });
+});
+
+// GET endpoint for channel age
+app.get('/api/youtube-age/:channelInput', async (req, res) => {
+    const { channelInput } = req.params;
+    await handleChannelRequest(channelInput, res);
+});
+
+// POST endpoint for channel age
+app.post('/api/youtube-age', async (req, res) => {
+    const { channel } = req.body;
+    await handleChannelRequest(channel, res);
 });
 
 // Health check endpoint
