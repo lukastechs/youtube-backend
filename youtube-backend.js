@@ -1,4 +1,3 @@
-// index.js
 const express = require('express');
 const dotenv = require('dotenv');
 const fetch = require('node-fetch');
@@ -51,7 +50,7 @@ function calculateChannelAge(creationDate) {
 
 // Extract channel ID from URL, handle, or ID
 async function extractChannelId(input) {
-    // Decode input to handle URL-encoded characters
+    // Decode input for GET requests
     let decodedInput;
     try {
         decodedInput = decodeURIComponent(input);
@@ -64,15 +63,29 @@ async function extractChannelId(input) {
     if (/^UC[0-9a-zA-Z_-]{22}$/.test(decodedInput)) {
         return decodedInput;
     }
+
     // Channel URL (e.g., https://www.youtube.com/channel/UCX6OQ3DkcsbYNE6H8uQQuVA)
     const channelMatch = decodedInput.match(/youtube\.com\/channel\/(UC[0-9a-zA-Z_-]{22})/i);
     if (channelMatch) {
         return channelMatch[1];
     }
+
     // Custom URL or handle (e.g., https://www.youtube.com/@MrBeast or @MrBeast)
-    const customMatch = decodedInput.match(/youtube\.com\/(?:c\/|@)([^\s\/]+)/i) || decodedInput.match(/^@([^\s\/]+)/);
-    if (customMatch) {
-        const customName = customMatch[1];
+    let customName;
+    const urlMatch = decodedInput.match(/youtube\.com\/(?:c\/|@)([^\s\/]+)/i);
+    const handleMatch = decodedInput.match(/^@([^\s\/]+)/);
+    const usernameMatch = decodedInput.match(/^([^\s\/@][^\s\/]*)$/); // Plain username (e.g., lukastechs)
+
+    if (urlMatch) {
+        customName = urlMatch[1];
+    } else if (handleMatch) {
+        customName = handleMatch[1];
+    } else if (usernameMatch) {
+        customName = usernameMatch[1];
+        decodedInput = `@${customName}`; // Prepend @ for plain usernames
+    }
+
+    if (customName) {
         const response = await fetch(
             `https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=${customName}&key=${YOUTUBE_API_KEY}`,
             { headers: { 'User-Agent': 'SocialAgeChecker/1.0' } }
@@ -82,6 +95,7 @@ async function extractChannelId(input) {
             return data.items[0].id;
         }
     }
+
     return null;
 }
 
@@ -102,7 +116,7 @@ async function handleChannelRequest(channelInput, res) {
     const channelId = await extractChannelId(channelInput);
     if (!channelId) {
         console.error(`Invalid channel input: ${channelInput}`);
-        return res.status(400).json({ error: 'Invalid channel URL, handle, or ID' });
+        return res.status(400).json({ error: 'Invalid channel URL, handle, username, or ID' });
     }
 
     try {
@@ -156,20 +170,20 @@ app.get('/', (req, res) => {
         status: 'OK',
         message: 'YouTube Age Checker Backend is running',
         endpoints: [
-            '/api/youtube-age/:channelInput (GET)',
-            '/api/youtube-age (POST)',
+            '/api/youtube-age/:channelInput (GET - for handles, usernames, or IDs)',
+            '/api/youtube-age (POST - for URLs, handles, usernames, or IDs)',
             '/health'
         ]
     });
 });
 
-// GET endpoint for channel age
+// GET endpoint for channel age (handles usernames, handles, IDs, encoded URLs)
 app.get('/api/youtube-age/:channelInput', async (req, res) => {
     const { channelInput } = req.params;
     await handleChannelRequest(channelInput, res);
 });
 
-// POST endpoint for channel age
+// POST endpoint for channel age (handles unencoded URLs, handles, usernames, IDs)
 app.post('/api/youtube-age', async (req, res) => {
     const { channel } = req.body;
     await handleChannelRequest(channel, res);
