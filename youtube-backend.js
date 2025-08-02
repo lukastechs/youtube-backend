@@ -1,4 +1,3 @@
-// index.js
 const express = require('express');
 const dotenv = require('dotenv');
 const fetch = require('node-fetch');
@@ -52,7 +51,13 @@ function calculateChannelAge(creationDate) {
 // Extract channel ID from URL, handle, or ID
 async function extractChannelId(input) {
     // Decode input to handle URL-encoded characters
-    const decodedInput = decodeURIComponent(input);
+    let decodedInput;
+    try {
+        decodedInput = decodeURIComponent(input);
+    } catch (e) {
+        console.error(`Error decoding input: ${input}`, e.message);
+        return null;
+    }
 
     // Direct channel ID (e.g., UCX6OQ3DkcsbYNE6H8uQQuVA)
     if (/^UC[0-9a-zA-Z_-]{22}$/.test(decodedInput)) {
@@ -63,7 +68,7 @@ async function extractChannelId(input) {
     if (channelMatch) {
         return channelMatch[1];
     }
-    // Custom URL or handle (e.g., https://www.youtube.com/c/MrBeast or @MrBeast)
+    // Custom URL or handle (e.g., https://www.youtube.com/@MrBeast or @MrBeast)
     const customMatch = decodedInput.match(/youtube\.com\/(?:c\/|@)([^\s\/]+)/i) || decodedInput.match(/^@([^\s\/]+)/);
     if (customMatch) {
         const customName = customMatch[1];
@@ -104,7 +109,7 @@ app.get('/api/youtube-age/:channelInput', async (req, res) => {
     const cached = cache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
         console.log(`Cache hit for channel: ${channelInput}`);
-        return res.json({ ...cached.data, is_cached: true });
+        return res.json(cached.data);
     }
 
     const channelId = await extractChannelId(channelInput);
@@ -145,12 +150,13 @@ app.get('/api/youtube-age/:channelInput', async (req, res) => {
             country: channel.snippet.country || 'N/A',
             verification_status: verificationStatus,
             accuracy: 'Exact',
-            subscribers: subscriberCount
+            subscribers: subscriberCount,
+            description: channel.snippet.description || 'N/A'
         };
 
         cache.set(cacheKey, { data: responseData, timestamp: Date.now() });
         console.log(`Successfully fetched data for channel ID: ${channelId}`);
-        res.json({ ...responseData, is_cached: false });
+        res.json(responseData);
     } catch (error) {
         console.error(`Error fetching channel for ID ${channelId}:`, error.message);
         res.status(500).json({ error: 'Could not fetch channel data' });
