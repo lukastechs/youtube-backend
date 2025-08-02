@@ -51,7 +51,7 @@ function calculateChannelAge(creationDate) {
 
 // Extract channel ID from URL, handle, or ID
 async function extractChannelId(input) {
-    // Decode input for GET requests
+    // Decode input to handle URL-encoded characters
     let decodedInput;
     try {
         decodedInput = decodeURIComponent(input);
@@ -87,6 +87,11 @@ async function extractChannelId(input) {
 
 // Handle channel request (shared logic for GET and POST)
 async function handleChannelRequest(channelInput, res) {
+    if (!channelInput) {
+        console.error(`Invalid channel input: ${channelInput}`);
+        return res.status(400).json({ error: 'Channel URL, handle, or ID is required' });
+    }
+
     const cacheKey = channelInput;
     const cached = cache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
@@ -161,24 +166,12 @@ app.get('/', (req, res) => {
 // GET endpoint for channel age
 app.get('/api/youtube-age/:channelInput', async (req, res) => {
     const { channelInput } = req.params;
-
-    if (!channelInput) {
-        console.error(`Invalid channel input: ${channelInput}`);
-        return res.status(400).json({ error: 'Channel URL, handle, or ID is required' });
-    }
-
     await handleChannelRequest(channelInput, res);
 });
 
 // POST endpoint for channel age
 app.post('/api/youtube-age', async (req, res) => {
     const { channel } = req.body;
-
-    if (!channel) {
-        console.error(`Invalid channel input: ${channel}`);
-        return res.status(400).json({ error: 'Channel URL, handle, or ID is required' });
-    }
-
     await handleChannelRequest(channel, res);
 });
 
